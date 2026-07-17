@@ -374,33 +374,36 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
                 value=[
                     {
                         "role": "assistant",
-                        "content": "👋 Upload an audio file (WAV or MP3) and I'll transcribe, understand, and respond in voice. In the cloud, use upload; on a local laptop, you can also use the microphone."
+                        "content": "👋 Devnagri Voice AI ready.\n\n• Type a message below and press Send\n• Or upload an audio file (WAV/MP3)\n• For live mic, open the public share link on a local laptop\n"
                     }
                 ],
             )
 
-            # Text + Audio input + Send
-            text_in1 = gr.Textbox(
-                label="Or type your message",
-                placeholder="Type here and press Enter, or upload audio above...",
-                lines=1,
-            )
-
+            # Chat input bar
             with gr.Row():
+                text_in1 = gr.Textbox(
+                    label="",
+                    placeholder="Type a message...",
+                    lines=1,
+                    scale=4,
+                    show_label=False,
+                )
                 audio_in1 = gr.Audio(
-                    label="Upload or record audio",
+                    label="",
                     type="numpy",
                     sources=["upload", "microphone"],
-                    scale=4,
+                    scale=1,
+                    min_width=120,
+                    show_label=False,
                 )
-                btn1 = gr.Button("Send", variant="primary", scale=1, size="lg")
+                btn1 = gr.Button("Send", variant="primary", scale=1, min_width=80)
 
             status_out1 = gr.Textbox(
                 label="Status",
                 lines=1,
                 interactive=False,
                 show_label=False,
-                value="Ready. Type a message or upload audio and press Send.",
+                value="Ready. Type or upload audio, then press Send.",
             )
             audio_out1 = gr.Audio(label="AI voice response", autoplay=True, visible=False)
 
