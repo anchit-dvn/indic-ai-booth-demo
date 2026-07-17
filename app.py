@@ -146,6 +146,37 @@ def demo1_voice_bot(audio, language, history, detail_visible):
     return history, response_audio, status, _gpu.get_status_text()
 
 
+def demo1_text_turn(text, language, history, detail_visible):
+    """Text bot: text in → chat conversation out."""
+    t0 = time.time()
+    try:
+        nlu = _ensure_nlu()
+        nlu_result = nlu.extract(text, language=language)
+
+        llm = _ensure_llm()
+        response = llm.generate_response(text, language=language)
+
+        tts = _ensure_tts()
+        response_audio = tts.synthesize(response, language=language)
+
+        bot_msg = response
+        if detail_visible:
+            intent = nlu_result.get("intent", "?")
+            sentiment = nlu_result.get("sentiment", "?")
+            bot_msg += f"\n\n_Intent: {intent} | Sentiment: {sentiment}_"
+
+        history = history + [
+            {"role": "user", "content": text},
+            {"role": "assistant", "content": bot_msg},
+        ]
+
+        status = f"{language} | Total {time.time() - t0:.1f}s"
+        return history, response_audio, status, _gpu.get_status_text()
+    except Exception as e:
+        traceback.print_exc()
+        return history, None, f"Error: {e}", _gpu.get_status_text()
+
+
 def demo1_clear():
     return [], None, "", _gpu.get_status_text()
 
@@ -348,13 +379,19 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
                 ],
             )
 
-            # Audio input + Send
+            # Text + Audio input + Send
+            text_in1 = gr.Textbox(
+                label="Or type your message",
+                placeholder="Type here and press Enter, or upload audio above...",
+                lines=1,
+            )
+
             with gr.Row():
                 audio_in1 = gr.Audio(
-                    label="Upload audio",
+                    label="Upload or record audio",
                     type="numpy",
                     sources=["upload", "microphone"],
-                    scale=5,
+                    scale=4,
                 )
                 btn1 = gr.Button("Send", variant="primary", scale=1, size="lg")
 
@@ -363,13 +400,25 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
                 lines=1,
                 interactive=False,
                 show_label=False,
-                value="Ready. Upload audio and press Send.",
+                value="Ready. Type a message or upload audio and press Send.",
             )
             audio_out1 = gr.Audio(label="AI voice response", autoplay=True, visible=False)
 
+            def demo1_combined(audio, text, language, history, detail_visible):
+                if audio is not None:
+                    return demo1_voice_bot(audio, language, history, detail_visible)
+                if text.strip():
+                    return demo1_text_turn(text, language, history, detail_visible)
+                return history, None, "Type a message or upload audio first.", _gpu.get_status_text()
+
             btn1.click(
-                fn=demo1_voice_bot,
-                inputs=[audio_in1, lang_dd1, chatbot1, detail_toggle],
+                fn=demo1_combined,
+                inputs=[audio_in1, text_in1, lang_dd1, chatbot1, detail_toggle],
+                outputs=[chatbot1, audio_out1, status_out1, gpu_status],
+            )
+            text_in1.submit(
+                fn=demo1_combined,
+                inputs=[audio_in1, text_in1, lang_dd1, chatbot1, detail_toggle],
                 outputs=[chatbot1, audio_out1, status_out1, gpu_status],
             )
             clear_btn1.click(
