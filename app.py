@@ -318,43 +318,52 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
         # TAB 1: Voice AI
         # ═══════════════════════════════════════════════════════════════════════
         with gr.Tab("Voice AI"):
+            # Controls row
             with gr.Row():
+                lang_dd1 = gr.Dropdown(
+                    choices=LANG_CHOICES_WITH_AUTO,
+                    value="Auto-detect",
+                    label="Language",
+                    scale=2,
+                )
+                detail_toggle = gr.Checkbox(
+                    label="Show NLU details",
+                    value=False,
+                    scale=1,
+                )
                 with gr.Column(scale=1):
-                    lang_dd1 = gr.Dropdown(
-                        choices=LANG_CHOICES_WITH_AUTO,
-                        value="Auto-detect",
-                        label="Language",
-                        scale=1,
-                    )
-                    detail_toggle = gr.Checkbox(
-                        label="Show NLU details",
-                        value=False,
-                        scale=0,
-                    )
+                    gr.Markdown("")
+                    clear_btn1 = gr.Button("Clear chat", variant="secondary", size="sm")
 
+            # Chat area with welcome message
             chatbot1 = gr.Chatbot(
                 label="Conversation",
-                height=400,
+                height=380,
                 show_label=False,
+                value=[
+                    {
+                        "role": "assistant",
+                        "content": "👋 Upload an audio file (WAV or MP3) and I'll transcribe, understand, and respond in voice. In the cloud, use upload; on a local laptop, you can also use the microphone."
+                    }
+                ],
             )
 
+            # Audio input + Send
             with gr.Row():
                 audio_in1 = gr.Audio(
-                    label="Speak or upload",
+                    label="Upload audio",
                     type="numpy",
                     sources=["upload", "microphone"],
-                    scale=4,
+                    scale=5,
                 )
-                with gr.Column(scale=1, min_width=80):
-                    btn1 = gr.Button("Send", variant="primary")
-                    clear_btn1 = gr.Button("Clear", variant="secondary")
+                btn1 = gr.Button("Send", variant="primary", scale=1, size="lg")
 
             status_out1 = gr.Textbox(
                 label="Status",
                 lines=1,
                 interactive=False,
                 show_label=False,
-                placeholder="Ready.",
+                value="Ready. Upload audio and press Send.",
             )
             audio_out1 = gr.Audio(label="AI voice response", autoplay=True, visible=False)
 
