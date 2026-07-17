@@ -8,6 +8,7 @@ Launch:  python app.py
 import gradio as gr
 import json
 import time
+import traceback
 
 from config import (
     BRAND_NAME, BRAND_TAGLINE, BRAND_DESCRIPTION,
@@ -73,310 +74,393 @@ def _ensure_lid():
     return _lid
 
 
-# ── Language dropdown options ─────────────────────────────────────────────────
 LANG_CHOICES = list(LANGUAGES.keys())
-LANG_CHOICES_WITH_AUTO = ["Auto-detect (MMS-LID)"] + LANG_CHOICES
+LANG_CHOICES_WITH_AUTO = ["Auto-detect"] + LANG_CHOICES
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DEMO 1: "Speak to AI in Your Language" — Voice-in → Voice-out loop
+#  DEMO 1: Voice Loop — LID → STT → NLU → LLM → TTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def demo1_voice_loop(audio, language):
-    """Full voice-in → LID → STT → NLU → LLM → TTS → voice-out pipeline."""
     if audio is None:
-        return "Please record or upload audio.", "", "", "", "", None, _gpu.get_status_text()
+        return ("", "", "", "", "Upload or record audio first.", None, _gpu.get_status_text())
 
+    results = {"lid": "", "transcript": "", "nlu": "", "response": "", "timing": "", "audio": None}
     t0 = time.time()
 
-    # Step 0: Language identification (if auto-detect) or use selected
-    lid_text = ""
-    if language == "Auto-detect (MMS-LID)":
-        lid = _ensure_lid()
-        detected_lang, confidence = lid.identify(audio)
-        language = detected_lang
-        lid_text = f"Detected: {detected_lang} (confidence: {confidence:.1%})"
+    try:
+        if language == "Auto-detect":
+            lid = _ensure_lid()
+            detected, conf = lid.identify(audio)
+            language = detected
+            results["lid"] = f"{detected} ({conf:.0%})"
+        else:
+            results["lid"] = language
         t_lid = time.time() - t0
-    else:
-        lid_text = f"Selected: {language}"
-        t_lid = 0.0
 
-    # Step 1: Speech-to-text (OmniASR-CTC-300M)
-    stt = _ensure_stt()
-    transcript = stt.transcribe(audio, language=language)
-    t_stt = time.time() - t0
+        stt = _ensure_stt()
+        transcript = stt.transcribe(audio, language=language)
+        t_stt = time.time() - t0
+        results["transcript"] = transcript
 
-    if not transcript or transcript == "[No audio provided]":
-        return "Could not transcribe audio. Please try again.", lid_text, "", "", "", None, _gpu.get_status_text()
+        if not transcript or transcript == "[No audio provided]":
+            results["timing"] = "No speech detected."
+            return (results["lid"], results["transcript"], "", "", results["timing"], None, _gpu.get_status_text())
 
-    # Step 2: NLU — intent + entity extraction
-    nlu = _ensure_nlu()
-    nlu_result = nlu.extract(transcript, language=language)
-    nlu_text = json.dumps(nlu_result, indent=2, ensure_ascii=False)
+        nlu = _ensure_nlu()
+        nlu_result = nlu.extract(transcript, language=language)
+        results["nlu"] = json.dumps(nlu_result, indent=2, ensure_ascii=False)
 
-    # Step 3: LLM — generate response in the same language (Gemma 3 4B)
-    llm = _ensure_llm()
-    response = llm.generate_response(transcript, language=language)
+        llm = _ensure_llm()
+        response = llm.generate_response(transcript, language=language)
+        results["response"] = response
 
-    # Step 4: TTS — speak the response (Kokoro-82M + espeak-ng G2P)
-    tts = _ensure_tts()
-    response_audio = tts.synthesize(response, language=language)
+        tts = _ensure_tts()
+        response_audio = tts.synthesize(response, language=language)
+        results["audio"] = response_audio
 
-    t_total = time.time() - t0
-    timing = f"LID: {t_lid:.1f}s | STT: {t_stt:.1f}s | Total: {t_total:.1f}s"
+        t_total = time.time() - t0
+        results["timing"] = f"LID {t_lid:.1f}s | STT {t_stt:.1f}s | Total {t_total:.1f}s"
 
-    return transcript, lid_text, nlu_text, response, timing, response_audio, _gpu.get_status_text()
+    except Exception as e:
+        results["timing"] = f"Error: {e}"
+        traceback.print_exc()
+
+    return (results["lid"], results["transcript"], results["nlu"],
+            results["response"], results["timing"], results["audio"], _gpu.get_status_text())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DEMO 2: "Your Call Center, Automated"
+#  DEMO 2: Call Center AI
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def demo2_call_center(scenario_name, audio):
-    """Process a customer call: transcribe → sentiment → summary → response."""
     scenario = CALL_CENTER_SCENARIOS.get(scenario_name, {})
     language = scenario.get("language", "Hindi")
     context = scenario.get("context", "")
 
     if audio is None:
-        return "Please select a scenario and provide audio.", "", "", "", "", None, _gpu.get_status_text()
+        return ("", "", "", "", "Upload or record audio first.", None, _gpu.get_status_text())
 
     t0 = time.time()
+    r = {"transcript": "", "english": "", "analysis": "", "response": "", "timing": "", "audio": None}
 
-    # Transcribe
-    stt = _ensure_stt()
-    transcript = stt.transcribe(audio, language=language)
+    try:
+        stt = _ensure_stt()
+        r["transcript"] = stt.transcribe(audio, language=language)
 
-    # NLU
-    nlu = _ensure_nlu()
-    nlu_result = nlu.extract(transcript, language=language)
-    sentiment = nlu_result.get("sentiment", "neutral")
-    intent = nlu_result.get("intent", "unknown")
-    summary = nlu_result.get("summary", "")
+        nlu = _ensure_nlu()
+        nlu_result = nlu.extract(r["transcript"], language=language)
+        r["analysis"] = f"Intent: {nlu_result.get('intent', '?')}\nSentiment: {nlu_result.get('sentiment', '?')}\nSummary: {nlu_result.get('summary', '')}"
 
-    # Translate transcript to English for the CIO
-    translation = _ensure_translation()
-    english_transcript = translation.translate(transcript, source_lang=language, target_lang="English")
+        translation = _ensure_translation()
+        r["english"] = translation.translate(r["transcript"], source_lang=language, target_lang="English")
 
-    # Generate response
-    llm = _ensure_llm()
-    response = llm.generate_response(transcript, language=language, context=context)
+        llm = _ensure_llm()
+        r["response"] = llm.generate_response(r["transcript"], language=language, context=context)
 
-    # Speak the response
-    tts = _ensure_tts()
-    response_audio = tts.synthesize(response, language=language)
+        tts = _ensure_tts()
+        r["audio"] = tts.synthesize(r["response"], language=language)
 
-    t_total = time.time() - t0
+        r["timing"] = f"Processed in {time.time() - t0:.1f}s"
+    except Exception as e:
+        r["timing"] = f"Error: {e}"
+        traceback.print_exc()
 
-    return (
-        transcript,
-        english_transcript,
-        f"Intent: {intent}\nSentiment: {sentiment}\nSummary: {summary}",
-        response,
-        f"Processed in {t_total:.1f}s",
-        response_audio,
-        _gpu.get_status_text(),
-    )
+    return (r["transcript"], r["english"], r["analysis"], r["response"], r["timing"], r["audio"], _gpu.get_status_text())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DEMO 3: "Voice Translation — Real-Time"
+#  DEMO 3: Voice Translation
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def demo3_voice_translation(audio, source_lang, target_lang):
-    """Voice-to-voice translation: LID → STT → translate → TTS."""
     if audio is None:
-        return "Please record or upload audio.", "", "", "", None, _gpu.get_status_text()
+        return ("", "", "", "Upload or record audio first.", None, _gpu.get_status_text())
 
     t0 = time.time()
+    r = {"lid": "", "transcript": "", "translated": "", "timing": "", "audio": None}
 
-    # Auto-detect source language if requested
-    lid_text = ""
-    if source_lang == "Auto-detect (MMS-LID)":
-        lid = _ensure_lid()
-        source_lang, confidence = lid.identify(audio)
-        lid_text = f"Detected: {source_lang} (confidence: {confidence:.1%})"
+    try:
+        if source_lang == "Auto-detect":
+            lid = _ensure_lid()
+            source_lang, conf = lid.identify(audio)
+            r["lid"] = f"{source_lang} ({conf:.0%})"
+        else:
+            r["lid"] = source_lang
 
-    # STT in source language (OmniASR-CTC-300M)
-    stt = _ensure_stt()
-    transcript = stt.transcribe(audio, language=source_lang)
+        stt = _ensure_stt()
+        r["transcript"] = stt.transcribe(audio, language=source_lang)
 
-    # Translate (NLLB-200)
-    translation = _ensure_translation()
-    translated = translation.translate(transcript, source_lang=source_lang, target_lang=target_lang)
+        translation = _ensure_translation()
+        r["translated"] = translation.translate(r["transcript"], source_lang=source_lang, target_lang=target_lang)
 
-    # TTS in target language (Kokoro-82M + espeak-ng G2P)
-    tts = _ensure_tts()
-    translated_audio = tts.synthesize(translated, language=target_lang)
+        tts = _ensure_tts()
+        r["audio"] = tts.synthesize(r["translated"], language=target_lang)
 
-    t_total = time.time() - t0
+        r["timing"] = f"Translated in {time.time() - t0:.1f}s"
+    except Exception as e:
+        r["timing"] = f"Error: {e}"
+        traceback.print_exc()
 
-    return lid_text, transcript, translated, f"Translated in {t_total:.1f}s", translated_audio, _gpu.get_status_text()
+    return (r["lid"], r["transcript"], r["translated"], r["timing"], r["audio"], _gpu.get_status_text())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DEMO 4: Text demos (secondary)
+#  DEMO 4: Text demos
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def demo4_chatbot(message, language):
-    """Text chatbot in Indic languages."""
     if not message.strip():
-        return "Please enter a message.", ""
-    llm = _ensure_llm()
-    response = llm.generate_response(message, language=language)
-    return response, _gpu.get_status_text()
+        return "Type a message first.", _gpu.get_status_text()
+    try:
+        llm = _ensure_llm()
+        response = llm.generate_response(message, language=language)
+        return response, _gpu.get_status_text()
+    except Exception as e:
+        return f"Error: {e}", _gpu.get_status_text()
 
 
 def demo4_translate_text(text, source_lang, target_lang):
-    """Text translation."""
     if not text.strip():
-        return "Please enter text to translate.", ""
-    translation = _ensure_translation()
-    result = translation.translate(text, source_lang=source_lang, target_lang=target_lang)
-    return result, _gpu.get_status_text()
+        return "Enter text to translate.", _gpu.get_status_text()
+    try:
+        translation = _ensure_translation()
+        result = translation.translate(text, source_lang=source_lang, target_lang=target_lang)
+        return result, _gpu.get_status_text()
+    except Exception as e:
+        return f"Error: {e}", _gpu.get_status_text()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  GPU Status updater
+#  GRADIO UI — dark, minimal, clean
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def update_gpu_status():
-    return _gpu.get_status_text()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  GRADIO UI
-# ═══════════════════════════════════════════════════════════════════════════════
-
-CUSTOM_CSS = """
+CSS = """
+:root {
+    --bg: #0a0a0f;
+    --surface: #14141f;
+    --surface2: #1c1c2a;
+    --border: #2a2a3a;
+    --text: #e4e4e7;
+    --text-dim: #71717a;
+    --accent: #f97316;
+    --accent-dim: #c2410c;
+    --green: #22c55e;
+}
 .gradio-container {
-    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
-    color: #e0e0e0;
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif !important;
 }
 .gradio-container .main {
-    background: transparent;
+    background: transparent !important;
 }
-#brand-header {
+#header {
     text-align: center;
-    padding: 20px 0 10px 0;
-    border-bottom: 1px solid #333;
-    margin-bottom: 20px;
+    padding: 28px 0 20px 0;
 }
-#brand-header h1 {
-    color: #ff6b35;
-    font-size: 2.5em;
+#header h1 {
+    color: var(--text) !important;
+    font-size: 1.8em;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.02em;
+}
+#header .tagline {
+    color: var(--accent) !important;
+    font-size: 0.95em;
+    margin: 6px 0 0 0;
+    font-weight: 500;
+}
+#header .desc {
+    color: var(--text-dim) !important;
+    font-size: 0.8em;
+    margin: 4px 0 0 0;
+}
+#gpu-bar {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    padding: 10px 16px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.78em !important;
+    color: var(--green) !important;
+    margin-bottom: 8px !important;
+}
+.gradio-container .tabs {
+    border: none !important;
+}
+.tab-nav {
+    border-bottom: 1px solid var(--border) !important;
+    gap: 0 !important;
+}
+.tab-nav button {
+    color: var(--text-dim) !important;
+    font-size: 0.9em !important;
+    font-weight: 500 !important;
+    padding: 10px 20px !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    background: transparent !important;
+    transition: all 0.2s !important;
+}
+.tab-nav button:hover {
+    color: var(--text) !important;
+}
+.tab-nav button.selected {
+    color: var(--accent) !important;
+    border-bottom: 2px solid var(--accent) !important;
+    background: transparent !important;
+}
+.gradio-container input,
+.gradio-container textarea {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+    font-size: 0.9em !important;
+}
+.gradio-container input:focus,
+.gradio-container textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15) !important;
+}
+.gradio-container .dropdown {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
+.gradio-container button.primary {
+    background: var(--accent) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    font-size: 0.95em !important;
+    padding: 10px 24px !important;
+    transition: all 0.2s !important;
+}
+.gradio-container button.primary:hover {
+    background: var(--accent-dim) !important;
+}
+.gradio-container label {
+    color: var(--text-dim) !important;
+    font-size: 0.8em !important;
+    font-weight: 500 !important;
+}
+.gradio-container .markdown {
+    color: var(--text-dim) !important;
+    font-size: 0.85em !important;
+}
+.gradio-container .markdown h3 {
+    color: var(--text) !important;
+    font-size: 1.1em !important;
+    font-weight: 600 !important;
+    margin: 0 0 8px 0 !important;
+}
+#footer {
+    text-align: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+    margin-top: 24px;
+}
+#footer p {
+    color: var(--text-dim) !important;
+    font-size: 0.75em;
     margin: 0;
 }
-#brand-header p {
-    color: #aaa;
-    font-size: 1.1em;
-    margin: 5px 0 0 0;
-}
-.gpu-monitor {
-    background: #1a1a2e !important;
-    border: 1px solid #ff6b35 !important;
-    border-radius: 8px !important;
-    padding: 12px !important;
-    font-family: monospace !important;
-    font-size: 0.9em !important;
-    color: #4ecca3 !important;
-}
-.tab-label {
-    font-size: 1.1em !important;
-    font-weight: bold !important;
+footer.svelte-1rjryqp {
+    display: none !important;
 }
 """
 
-with gr.Blocks(
-    title=f"{BRAND_NAME} — Indic Voice AI",
-) as app:
+with gr.Blocks(title=f"{BRAND_NAME}") as app:
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    with gr.Row():
-        gr.HTML(f"""
-        <div id="brand-header">
-            <h1>{BRAND_NAME}</h1>
-            <p>{BRAND_TAGLINE}</p>
-            <p style="font-size: 0.9em; color: #666;">{BRAND_DESCRIPTION}</p>
-        </div>
-        """)
+    gr.HTML(f"""
+    <div id="header">
+        <h1>{BRAND_NAME}</h1>
+        <p class="tagline">{BRAND_TAGLINE}</p>
+        <p class="desc">{BRAND_DESCRIPTION}</p>
+    </div>
+    """)
 
-    # ── GPU Monitor (always visible) ──────────────────────────────────────────
     gpu_status = gr.Textbox(
-        label="AMD ROCm GPU Status",
         value=_gpu.get_status_text(),
         every=5,
-        elem_classes=["gpu-monitor"],
+        elem_id="gpu-bar",
         interactive=False,
-        lines=4,
+        show_label=False,
+        lines=2,
     )
 
-    # ── Tabs ──────────────────────────────────────────────────────────────────
     with gr.Tabs():
 
         # ═══════════════════════════════════════════════════════════════════════
-        # TAB 1: Voice Loop (HERO DEMO)
+        # TAB 1: Voice AI
         # ═══════════════════════════════════════════════════════════════════════
-        with gr.Tab("Speak to AI", elem_classes=["tab-label"]):
-            gr.Markdown("### Speak in your language — AI listens, understands, and responds in voice")
-            gr.Markdown("*Full voice-in → voice-out loop: MMS-LID → OmniASR → Gemma 3 4B → Kokoro TTS*")
+        with gr.Tab("Voice AI"):
+            gr.Markdown("### Speak — AI listens, understands, responds in voice")
 
             with gr.Row():
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, min_width=300):
                     lang_dd1 = gr.Dropdown(
                         choices=LANG_CHOICES_WITH_AUTO,
-                        value="Auto-detect (MMS-LID)",
-                        label="Language (auto-detect uses MMS-LID-1024)",
+                        value="Auto-detect",
+                        label="Language",
+                        info="Auto-detect uses MMS-LID-1024",
                     )
                     audio_in1 = gr.Audio(
-                        label="Speak here (or upload audio)",
+                        label="Audio input",
                         type="numpy",
-                        sources=["microphone", "upload"],
+                        sources=["upload", "microphone"],
                     )
-                    btn1 = gr.Button("Process Voice", variant="primary", size="lg")
+                    btn1 = gr.Button("Run", variant="primary", size="lg")
 
                 with gr.Column(scale=2):
-                    lid_out1 = gr.Textbox(label="Language Identification (MMS-LID)", lines=1)
-                    transcript_out1 = gr.Textbox(label="Transcription (OmniASR-CTC-300M)", lines=3)
-                    nlu_out1 = gr.Textbox(label="AI Understanding (Intent + Entities + Sentiment)", lines=6)
-                    response_out1 = gr.Textbox(label="AI Response (Gemma 3 4B)", lines=4)
-                    timing_out1 = gr.Textbox(label="Processing Time", lines=1)
-                    audio_out1 = gr.Audio(label="AI Voice Response (Kokoro-82M)", autoplay=True)
+                    lid_out1 = gr.Textbox(label="Language ID", lines=1, interactive=False)
+                    transcript_out1 = gr.Textbox(label="Transcription", lines=3, interactive=False)
+                    nlu_out1 = gr.Textbox(label="Understanding", lines=5, interactive=False)
+                    response_out1 = gr.Textbox(label="Response", lines=4, interactive=False)
+                    timing_out1 = gr.Textbox(label="Timing", lines=1, interactive=False)
+                    audio_out1 = gr.Audio(label="Voice response", autoplay=True)
 
             btn1.click(
                 fn=demo1_voice_loop,
                 inputs=[audio_in1, lang_dd1],
-                outputs=[transcript_out1, lid_out1, nlu_out1, response_out1, timing_out1, audio_out1, gpu_status],
+                outputs=[lid_out1, transcript_out1, nlu_out1, response_out1, timing_out1, audio_out1, gpu_status],
             )
 
         # ═══════════════════════════════════════════════════════════════════════
-        # TAB 2: Call Center AI
+        # TAB 2: Call Center
         # ═══════════════════════════════════════════════════════════════════════
-        with gr.Tab("Call Center AI", elem_classes=["tab-label"]):
-            gr.Markdown("### Your call center, automated — in Indic languages")
-            gr.Markdown("*Play a customer call → AI transcribes, analyzes sentiment, generates response*")
+        with gr.Tab("Call Center"):
+            gr.Markdown("### Automated call analysis — transcribe, analyze, respond")
 
             with gr.Row():
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, min_width=300):
                     scenario_dd = gr.Dropdown(
                         choices=list(CALL_CENTER_SCENARIOS.keys()),
                         value=list(CALL_CENTER_SCENARIOS.keys())[0],
                         label="Scenario",
                     )
                     audio_in2 = gr.Audio(
-                        label="Customer call audio",
+                        label="Call audio",
                         type="numpy",
                         sources=["upload", "microphone"],
                     )
-                    btn2 = gr.Button("Analyze Call", variant="primary", size="lg")
+                    btn2 = gr.Button("Analyze", variant="primary", size="lg")
 
                 with gr.Column(scale=2):
-                    transcript_out2 = gr.Textbox(label="Transcription (Original Language)", lines=3)
-                    english_out2 = gr.Textbox(label="English Translation", lines=3)
-                    analysis_out2 = gr.Textbox(label="AI Analysis (Intent + Sentiment + Summary)", lines=4)
-                    response_out2 = gr.Textbox(label="Suggested Response", lines=4)
-                    timing_out2 = gr.Textbox(label="Processing Time", lines=1)
-                    audio_out2 = gr.Audio(label="AI Voice Response", autoplay=True)
+                    transcript_out2 = gr.Textbox(label="Transcription", lines=3, interactive=False)
+                    english_out2 = gr.Textbox(label="English translation", lines=3, interactive=False)
+                    analysis_out2 = gr.Textbox(label="Analysis", lines=3, interactive=False)
+                    response_out2 = gr.Textbox(label="Suggested response", lines=4, interactive=False)
+                    timing_out2 = gr.Textbox(label="Timing", lines=1, interactive=False)
+                    audio_out2 = gr.Audio(label="Voice response", autoplay=True)
 
             btn2.click(
                 fn=demo2_call_center,
@@ -385,37 +469,36 @@ with gr.Blocks(
             )
 
         # ═══════════════════════════════════════════════════════════════════════
-        # TAB 3: Voice Translation
+        # TAB 3: Translation
         # ═══════════════════════════════════════════════════════════════════════
-        with gr.Tab("Voice Translation", elem_classes=["tab-label"]):
-            gr.Markdown("### Real-time voice-to-voice translation across Indic languages")
-            gr.Markdown("*Speak in one language → AI translates and speaks in another*")
+        with gr.Tab("Translation"):
+            gr.Markdown("### Voice-to-voice translation across Indic languages")
 
             with gr.Row():
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, min_width=300):
                     src_lang_dd = gr.Dropdown(
                         choices=LANG_CHOICES_WITH_AUTO,
-                        value="Auto-detect (MMS-LID)",
-                        label="From (auto-detect uses MMS-LID)",
+                        value="Auto-detect",
+                        label="From",
                     )
                     tgt_lang_dd = gr.Dropdown(
                         choices=LANG_CHOICES,
                         value="Hindi",
-                        label="To (target language)",
+                        label="To",
                     )
                     audio_in3 = gr.Audio(
-                        label="Speak here (or upload audio)",
+                        label="Audio input",
                         type="numpy",
-                        sources=["microphone", "upload"],
+                        sources=["upload", "microphone"],
                     )
-                    btn3 = gr.Button("Translate Voice", variant="primary", size="lg")
+                    btn3 = gr.Button("Translate", variant="primary", size="lg")
 
                 with gr.Column(scale=2):
-                    lid_out3 = gr.Textbox(label="Language Identification", lines=1)
-                    transcript_out3 = gr.Textbox(label="Original (transcribed)", lines=3)
-                    translated_out3 = gr.Textbox(label="Translated", lines=3)
-                    timing_out3 = gr.Textbox(label="Processing Time", lines=1)
-                    audio_out3 = gr.Audio(label="Translated Voice Output (Kokoro-82M)", autoplay=True)
+                    lid_out3 = gr.Textbox(label="Detected language", lines=1, interactive=False)
+                    transcript_out3 = gr.Textbox(label="Original", lines=3, interactive=False)
+                    translated_out3 = gr.Textbox(label="Translated", lines=3, interactive=False)
+                    timing_out3 = gr.Textbox(label="Timing", lines=1, interactive=False)
+                    audio_out3 = gr.Audio(label="Translated voice", autoplay=True)
 
             btn3.click(
                 fn=demo3_voice_translation,
@@ -424,23 +507,20 @@ with gr.Blocks(
             )
 
         # ═══════════════════════════════════════════════════════════════════════
-        # TAB 4: Text Demos (secondary)
+        # TAB 4: Text
         # ═══════════════════════════════════════════════════════════════════════
-        with gr.Tab("Text Demos", elem_classes=["tab-label"]):
-            gr.Markdown("### Text-based demos (secondary — audio demos are the main attraction)")
-
+        with gr.Tab("Text"):
             with gr.Row():
-                # Chatbot
                 with gr.Column():
-                    gr.Markdown("#### Indic Language Chatbot")
+                    gr.Markdown("### Chatbot")
                     lang_dd4 = gr.Dropdown(
                         choices=LANG_CHOICES,
                         value="Hindi",
-                        label="Response Language",
+                        label="Language",
                     )
-                    chat_in = gr.Textbox(label="Your message", lines=2, placeholder="Type a query...")
+                    chat_in = gr.Textbox(label="Message", lines=2, placeholder="Type a query...")
                     chat_btn = gr.Button("Send", variant="primary")
-                    chat_out = gr.Textbox(label="AI Response", lines=4)
+                    chat_out = gr.Textbox(label="Response", lines=4, interactive=False)
 
                     chat_btn.click(
                         fn=demo4_chatbot,
@@ -448,9 +528,8 @@ with gr.Blocks(
                         outputs=[chat_out, gpu_status],
                     )
 
-                # Text translation
                 with gr.Column():
-                    gr.Markdown("#### Text Translation")
+                    gr.Markdown("### Translate")
                     src_lang_dd4 = gr.Dropdown(
                         choices=LANG_CHOICES,
                         value="English",
@@ -461,9 +540,9 @@ with gr.Blocks(
                         value="Hindi",
                         label="To",
                     )
-                    trans_in = gr.Textbox(label="Text to translate", lines=2, placeholder="Enter text...")
+                    trans_in = gr.Textbox(label="Text", lines=2, placeholder="Enter text...")
                     trans_btn = gr.Button("Translate", variant="primary")
-                    trans_out = gr.Textbox(label="Translation", lines=4)
+                    trans_out = gr.Textbox(label="Result", lines=4, interactive=False)
 
                     trans_btn.click(
                         fn=demo4_translate_text,
@@ -471,12 +550,9 @@ with gr.Blocks(
                         outputs=[trans_out, gpu_status],
                     )
 
-    # ── Footer ────────────────────────────────────────────────────────────────
     gr.HTML(f"""
-    <div style="text-align: center; padding: 20px 0; border-top: 1px solid #333; margin-top: 20px;">
-        <p style="color: #666; font-size: 0.85em;">
-            {BRAND_NAME} · Powered by AMD ROCm GPUs · {BRAND_TAGLINE}
-        </p>
+    <div id="footer">
+        <p>{BRAND_NAME} | Powered by AMD ROCm | {BRAND_TAGLINE}</p>
     </div>
     """)
 
@@ -485,13 +561,12 @@ with gr.Blocks(
 if __name__ == "__main__":
     print(f"\n{'='*60}")
     print(f"  {BRAND_NAME} — Indic Voice AI Booth Demo")
-    print(f"  Running on: {_gpu.device_name}")
+    print(f"  GPU: {_gpu.device_name}")
     print(f"{'='*60}\n")
 
     app.launch(
         server_port=SERVER_PORT,
         share=SHARE,
         show_error=True,
-        theme=gr.themes.Soft(primary_hue="orange", secondary_hue="blue"),
-        css=CUSTOM_CSS,
+        css=CSS,
     )
