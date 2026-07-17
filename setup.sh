@@ -12,7 +12,15 @@ echo "============================================"
 # 1. Install espeak-ng (required for Kokoro TTS G2P)
 echo ""
 echo "[1/4] Installing espeak-ng..."
-sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng libsndfile1
+if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+    sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng libsndfile1
+elif command -v conda &>/dev/null; then
+    conda install -y -c conda-forge espeak-ng
+elif command -v apt-get &>/dev/null; then
+    apt-get update -qq && apt-get install -y -qq espeak-ng libsndfile1
+else
+    echo "  WARNING: Cannot install espeak-ng. TTS will fall back to English only."
+fi
 
 # 2. Install Python dependencies
 echo ""
