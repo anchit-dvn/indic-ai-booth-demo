@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+.gradio/
+*.wav
+*.mp3
+.env
+samples/*.wav
+samples/*.mp3

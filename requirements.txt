@@ -1,0 +1,11 @@
+gradio>=4.0.0
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.36.0
+accelerate>=0.25.0
+sentencepiece
+librosa
+soundfile
+numpy
+indicvoice @ git+https://github.com/Bindkushal/indic-voice.git
+indic-g2p @ git+https://github.com/Bindkushal/indic-g2p.git
