@@ -82,53 +82,72 @@ LANG_CHOICES_WITH_AUTO = ["Auto-detect"] + LANG_CHOICES
 #  DEMO 1: Voice Loop — LID → STT → NLU → LLM → TTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def demo1_voice_loop(audio, language):
+def demo1_voice_bot(audio, language, history, detail_visible):
+    """Voice bot: audio in → chat conversation out."""
     if audio is None:
-        return ("", "", "", "", "Upload or record audio first.", None, _gpu.get_status_text())
+        return history, None, "Upload or record audio first.", _gpu.get_status_text()
 
-    results = {"lid": "", "transcript": "", "nlu": "", "response": "", "timing": "", "audio": None}
     t0 = time.time()
+    status = ""
+    response_audio = None
 
     try:
+        # LID
         if language == "Auto-detect":
             lid = _ensure_lid()
             detected, conf = lid.identify(audio)
             language = detected
-            results["lid"] = f"{detected} ({conf:.0%})"
+            lid_label = f"{detected} ({conf:.0%})"
         else:
-            results["lid"] = language
+            lid_label = language
         t_lid = time.time() - t0
 
+        # STT
         stt = _ensure_stt()
         transcript = stt.transcribe(audio, language=language)
         t_stt = time.time() - t0
-        results["transcript"] = transcript
 
         if not transcript or transcript == "[No audio provided]":
-            results["timing"] = "No speech detected."
-            return (results["lid"], results["transcript"], "", "", results["timing"], None, _gpu.get_status_text())
+            status = "No speech detected."
+            return history, None, status, _gpu.get_status_text()
 
+        # NLU
         nlu = _ensure_nlu()
         nlu_result = nlu.extract(transcript, language=language)
-        results["nlu"] = json.dumps(nlu_result, indent=2, ensure_ascii=False)
 
+        # LLM
         llm = _ensure_llm()
         response = llm.generate_response(transcript, language=language)
-        results["response"] = response
 
+        # TTS
         tts = _ensure_tts()
         response_audio = tts.synthesize(response, language=language)
-        results["audio"] = response_audio
 
         t_total = time.time() - t0
-        results["timing"] = f"LID {t_lid:.1f}s | STT {t_stt:.1f}s | Total {t_total:.1f}s"
+        status = f"{lid_label} | LID {t_lid:.1f}s | STT {t_stt:.1f}s | Total {t_total:.1f}s"
+
+        # Build chat messages
+        user_msg = transcript
+        bot_msg = response
+        if detail_visible:
+            intent = nlu_result.get("intent", "?")
+            sentiment = nlu_result.get("sentiment", "?")
+            bot_msg += f"\n\n_Intent: {intent} | Sentiment: {sentiment}_"
+
+        history = history + [
+            {"role": "user", "content": user_msg},
+            {"role": "assistant", "content": bot_msg},
+        ]
 
     except Exception as e:
-        results["timing"] = f"Error: {e}"
+        status = f"Error: {e}"
         traceback.print_exc()
 
-    return (results["lid"], results["transcript"], results["nlu"],
-            results["response"], results["timing"], results["audio"], _gpu.get_status_text())
+    return history, response_audio, status, _gpu.get_status_text()
+
+
+def demo1_clear():
+    return [], None, "", _gpu.get_status_text()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -268,6 +287,10 @@ CSS = """
 #footer { text-align:center; padding:14px 0; border-top:1px solid var(--border); margin-top:24px; }
 #footer p { color:var(--text-dim)!important; font-size:0.7em; margin:0; }
 footer { display:none!important; }
+.gradio-container .chatbot { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:12px!important; }
+.gradio-container .chatbot .message { border-radius:12px!important; font-size:0.9em!important; }
+.gradio-container .chatbot .message.user { background:var(--surface2)!important; color:var(--text)!important; }
+.gradio-container .chatbot .message.bot { background:#1a1205!important; color:var(--text)!important; border:1px solid var(--accent-dim)!important; }
 """
 
 with gr.Blocks(title=f"{BRAND_NAME}") as app:
@@ -295,34 +318,54 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
         # TAB 1: Voice AI
         # ═══════════════════════════════════════════════════════════════════════
         with gr.Tab("Voice AI"):
-            gr.Markdown("### Speak — AI listens, understands, responds in voice")
-
             with gr.Row():
-                with gr.Column(scale=1, min_width=280):
+                with gr.Column(scale=1):
                     lang_dd1 = gr.Dropdown(
                         choices=LANG_CHOICES_WITH_AUTO,
                         value="Auto-detect",
                         label="Language",
+                        scale=1,
                     )
-                    audio_in1 = gr.Audio(
-                        label="Audio input",
-                        type="numpy",
-                        sources=["upload"],
+                    detail_toggle = gr.Checkbox(
+                        label="Show NLU details",
+                        value=False,
+                        scale=0,
                     )
-                    btn1 = gr.Button("Run", variant="primary")
 
-                with gr.Column(scale=1, min_width=500):
-                    lid_out1 = gr.Textbox(label="Language ID", lines=1, interactive=False)
-                    transcript_out1 = gr.Textbox(label="Transcription", lines=3, interactive=False)
-                    nlu_out1 = gr.Textbox(label="Understanding", lines=5, interactive=False)
-                    response_out1 = gr.Textbox(label="Response", lines=4, interactive=False)
-                    timing_out1 = gr.Textbox(label="Timing", lines=1, interactive=False)
-                    audio_out1 = gr.Audio(label="Voice response", autoplay=True)
+            chatbot1 = gr.Chatbot(
+                label="Conversation",
+                height=400,
+                show_label=False,
+            )
+
+            with gr.Row():
+                audio_in1 = gr.Audio(
+                    label="Speak or upload",
+                    type="numpy",
+                    sources=["upload", "microphone"],
+                    scale=4,
+                )
+                with gr.Column(scale=1, min_width=80):
+                    btn1 = gr.Button("Send", variant="primary")
+                    clear_btn1 = gr.Button("Clear", variant="secondary")
+
+            status_out1 = gr.Textbox(
+                label="Status",
+                lines=1,
+                interactive=False,
+                show_label=False,
+                placeholder="Ready.",
+            )
+            audio_out1 = gr.Audio(label="AI voice response", autoplay=True, visible=False)
 
             btn1.click(
-                fn=demo1_voice_loop,
-                inputs=[audio_in1, lang_dd1],
-                outputs=[lid_out1, transcript_out1, nlu_out1, response_out1, timing_out1, audio_out1, gpu_status],
+                fn=demo1_voice_bot,
+                inputs=[audio_in1, lang_dd1, chatbot1, detail_toggle],
+                outputs=[chatbot1, audio_out1, status_out1, gpu_status],
+            )
+            clear_btn1.click(
+                fn=demo1_clear,
+                outputs=[chatbot1, audio_out1, status_out1, gpu_status],
             )
 
         # ═══════════════════════════════════════════════════════════════════════
