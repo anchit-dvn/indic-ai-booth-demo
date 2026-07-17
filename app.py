@@ -238,144 +238,36 @@ def demo4_translate_text(text, source_lang, target_lang):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 CSS = """
-:root {
-    --bg: #0a0a0f;
-    --surface: #14141f;
-    --surface2: #1c1c2a;
-    --border: #2a2a3a;
-    --text: #e4e4e7;
-    --text-dim: #71717a;
-    --accent: #f97316;
-    --accent-dim: #c2410c;
-    --green: #22c55e;
-}
-.gradio-container {
-    background: var(--bg) !important;
-    color: var(--text) !important;
-    max-width: 1200px !important;
-    margin: 0 auto !important;
-    font-family: 'Inter', -apple-system, system-ui, sans-serif !important;
-}
-.gradio-container .main {
-    background: transparent !important;
-}
-#header {
-    text-align: center;
-    padding: 28px 0 20px 0;
-}
-#header h1 {
-    color: var(--text) !important;
-    font-size: 1.8em;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.02em;
-}
-#header .tagline {
-    color: var(--accent) !important;
-    font-size: 0.95em;
-    margin: 6px 0 0 0;
-    font-weight: 500;
-}
-#header .desc {
-    color: var(--text-dim) !important;
-    font-size: 0.8em;
-    margin: 4px 0 0 0;
-}
-#gpu-bar {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 10px !important;
-    padding: 10px 16px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.78em !important;
-    color: var(--green) !important;
-    margin-bottom: 8px !important;
-}
-.gradio-container .tabs {
-    border: none !important;
-}
-.tab-nav {
-    border-bottom: 1px solid var(--border) !important;
-    gap: 0 !important;
-}
-.tab-nav button {
-    color: var(--text-dim) !important;
-    font-size: 0.9em !important;
-    font-weight: 500 !important;
-    padding: 10px 20px !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    background: transparent !important;
-    transition: all 0.2s !important;
-}
-.tab-nav button:hover {
-    color: var(--text) !important;
-}
-.tab-nav button.selected {
-    color: var(--accent) !important;
-    border-bottom: 2px solid var(--accent) !important;
-    background: transparent !important;
-}
-.gradio-container input,
-.gradio-container textarea {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    color: var(--text) !important;
-    font-size: 0.9em !important;
-}
-.gradio-container input:focus,
-.gradio-container textarea:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15) !important;
-}
-.gradio-container .dropdown {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-}
-.gradio-container button.primary {
-    background: var(--accent) !important;
-    border: none !important;
-    border-radius: 8px !important;
-    color: #fff !important;
-    font-weight: 600 !important;
-    font-size: 0.95em !important;
-    padding: 10px 24px !important;
-    transition: all 0.2s !important;
-}
-.gradio-container button.primary:hover {
-    background: var(--accent-dim) !important;
-}
-.gradio-container label {
-    color: var(--text-dim) !important;
-    font-size: 0.8em !important;
-    font-weight: 500 !important;
-}
-.gradio-container .markdown {
-    color: var(--text-dim) !important;
-    font-size: 0.85em !important;
-}
-.gradio-container .markdown h3 {
-    color: var(--text) !important;
-    font-size: 1.1em !important;
-    font-weight: 600 !important;
-    margin: 0 0 8px 0 !important;
-}
-#footer {
-    text-align: center;
-    padding: 16px 0;
-    border-top: 1px solid var(--border);
-    margin-top: 24px;
-}
-#footer p {
-    color: var(--text-dim) !important;
-    font-size: 0.75em;
-    margin: 0;
-}
-footer.svelte-1rjryqp {
-    display: none !important;
-}
+:root { --bg:#0a0a0f; --surface:#14141f; --surface2:#1c1c2a; --border:#2a2a3a; --text:#e4e4e7; --text-dim:#71717a; --accent:#f97316; --accent-dim:#c2410c; --green:#22c55e; }
+.gradio-container { background:var(--bg)!important; color:var(--text)!important; max-width:1200px!important; margin:0 auto!important; font-family:system-ui,-apple-system,sans-serif!important; }
+.gradio-container .main { background:transparent!important; padding:0 12px!important; }
+#header { text-align:center; padding:24px 0 16px; }
+#header h1 { color:var(--text)!important; font-size:1.6em; font-weight:700; margin:0; }
+#header .tagline { color:var(--accent)!important; font-size:0.9em; margin:4px 0 0; font-weight:500; }
+#header .desc { color:var(--text-dim)!important; font-size:0.75em; margin:4px 0 0; }
+#gpu-bar { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:8px!important; padding:8px 14px!important; font-family:ui-monospace,monospace!important; font-size:0.75em!important; color:var(--green)!important; margin-bottom:16px!important; }
+.gradio-container .tabs { border:none!important; }
+.tab-nav { border-bottom:1px solid var(--border)!important; gap:4px!important; }
+.tab-nav button { color:var(--text-dim)!important; font-size:0.85em!important; font-weight:500!important; padding:8px 18px!important; border:none!important; border-bottom:2px solid transparent!important; background:transparent!important; }
+.tab-nav button.selected { color:var(--accent)!important; border-bottom:2px solid var(--accent)!important; }
+.gradio-container .tabitem { padding-top:16px!important; }
+.gradio-container input, .gradio-container textarea { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:8px!important; color:var(--text)!important; font-size:0.9em!important; }
+.gradio-container .dropdown { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:8px!important; }
+.gradio-container button.primary { background:var(--accent)!important; border:none!important; border-radius:8px!important; color:#fff!important; font-weight:600!important; width:100%!important; margin-top:8px!important; }
+.gradio-container button.primary:hover { background:var(--accent-dim)!important; }
+.gradio-container label { color:var(--text-dim)!important; font-size:0.75em!important; font-weight:500!important; margin-bottom:4px!important; }
+.gradio-container .markdown { color:var(--text-dim)!important; font-size:0.8em!important; }
+.gradio-container .markdown h3 { color:var(--text)!important; font-size:1em!important; font-weight:600!important; margin:0 0 12px!important; }
+.gradio-container .output-text { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:8px!important; }
+.gradio-container .form { gap:12px!important; }
+.gradio-container .row { gap:16px!important; }
+.gradio-container .column { gap:10px!important; }
+/* Audio player sizing */
+.gradio-container .audio-container { height:140px!important; min-height:140px!important; }
+.gradio-container .audio-container audio { border-radius:8px!important; }
+#footer { text-align:center; padding:14px 0; border-top:1px solid var(--border); margin-top:24px; }
+#footer p { color:var(--text-dim)!important; font-size:0.7em; margin:0; }
+footer { display:none!important; }
 """
 
 with gr.Blocks(title=f"{BRAND_NAME}") as app:
@@ -406,21 +298,20 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
             gr.Markdown("### Speak — AI listens, understands, responds in voice")
 
             with gr.Row():
-                with gr.Column(scale=1, min_width=300):
+                with gr.Column(scale=1, min_width=280):
                     lang_dd1 = gr.Dropdown(
                         choices=LANG_CHOICES_WITH_AUTO,
                         value="Auto-detect",
                         label="Language",
-                        info="Auto-detect uses MMS-LID-1024",
                     )
                     audio_in1 = gr.Audio(
                         label="Audio input",
                         type="numpy",
-                        sources=["upload", "microphone"],
+                        sources=["upload"],
                     )
-                    btn1 = gr.Button("Run", variant="primary", size="lg")
+                    btn1 = gr.Button("Run", variant="primary")
 
-                with gr.Column(scale=2):
+                with gr.Column(scale=1, min_width=500):
                     lid_out1 = gr.Textbox(label="Language ID", lines=1, interactive=False)
                     transcript_out1 = gr.Textbox(label="Transcription", lines=3, interactive=False)
                     nlu_out1 = gr.Textbox(label="Understanding", lines=5, interactive=False)
@@ -441,7 +332,7 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
             gr.Markdown("### Automated call analysis — transcribe, analyze, respond")
 
             with gr.Row():
-                with gr.Column(scale=1, min_width=300):
+                with gr.Column(scale=1, min_width=280):
                     scenario_dd = gr.Dropdown(
                         choices=list(CALL_CENTER_SCENARIOS.keys()),
                         value=list(CALL_CENTER_SCENARIOS.keys())[0],
@@ -450,11 +341,11 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
                     audio_in2 = gr.Audio(
                         label="Call audio",
                         type="numpy",
-                        sources=["upload", "microphone"],
+                        sources=["upload"],
                     )
-                    btn2 = gr.Button("Analyze", variant="primary", size="lg")
+                    btn2 = gr.Button("Analyze", variant="primary")
 
-                with gr.Column(scale=2):
+                with gr.Column(scale=1, min_width=500):
                     transcript_out2 = gr.Textbox(label="Transcription", lines=3, interactive=False)
                     english_out2 = gr.Textbox(label="English translation", lines=3, interactive=False)
                     analysis_out2 = gr.Textbox(label="Analysis", lines=3, interactive=False)
@@ -475,7 +366,7 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
             gr.Markdown("### Voice-to-voice translation across Indic languages")
 
             with gr.Row():
-                with gr.Column(scale=1, min_width=300):
+                with gr.Column(scale=1, min_width=280):
                     src_lang_dd = gr.Dropdown(
                         choices=LANG_CHOICES_WITH_AUTO,
                         value="Auto-detect",
@@ -489,11 +380,11 @@ with gr.Blocks(title=f"{BRAND_NAME}") as app:
                     audio_in3 = gr.Audio(
                         label="Audio input",
                         type="numpy",
-                        sources=["upload", "microphone"],
+                        sources=["upload"],
                     )
-                    btn3 = gr.Button("Translate", variant="primary", size="lg")
+                    btn3 = gr.Button("Translate", variant="primary")
 
-                with gr.Column(scale=2):
+                with gr.Column(scale=1, min_width=500):
                     lid_out3 = gr.Textbox(label="Detected language", lines=1, interactive=False)
                     transcript_out3 = gr.Textbox(label="Original", lines=3, interactive=False)
                     translated_out3 = gr.Textbox(label="Translated", lines=3, interactive=False)
